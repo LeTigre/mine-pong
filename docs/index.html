@@ -890,13 +890,35 @@
         // ------- Settings -------
         // These two hooks stay in-memory here; in the Android app they are
         // patched to use localStorage so settings survive restarts.
-        // Web build: settings live in localStorage, so they survive a reload and
-        // a relaunch from the home screen. Private mode can make it throw, and
-        // then the game simply runs with defaults for the session.
+        // Settings live in localStorage, so they survive a reload, a relaunch
+        // from the home screen and a restart of the Android app - this same file
+        // ships as assets/index.html inside the APK. Private mode can make the
+        // call throw, and then the game just runs with defaults for the session.
         const STORE_KEY = "minepong.settings";
+        const LEGACY_STORE_KEY = "minePongSettingsV1";   // written by MinePong 2.9 for Android
         function loadSavedSettings() {
-            try { return JSON.parse(localStorage.getItem(STORE_KEY)); }
-            catch (e) { return null; }
+            try {
+                const raw = localStorage.getItem(STORE_KEY) ||
+                            localStorage.getItem(LEGACY_STORE_KEY);
+                if (!raw) return null;
+                const p = JSON.parse(raw);
+                // Anything here may have been hand-edited or written by another
+                // version, and a bad value would break the game on startup: an
+                // unknown language makes every t() call throw.
+                if (!I18N[p.lang]) p.lang = "en";
+                // Spelled out rather than read from THEME_ORDER: that constant is
+                // declared far below this line, so touching it here would throw.
+                // Keep the two lists in step when adding a theme.
+                const themes = ["minecraft", "classic", "cyber", "nether", "space", "ocean", "candy", "matrix"];
+                if (!themes.includes(p.theme)) p.theme = "minecraft";
+                p.rotation = !!p.rotation;
+                if (!p.classic || typeof p.classic !== "object") p.classic = {};
+                const clampVol = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : undefined);
+                p.musicVol = clampVol(p.musicVol);
+                p.sfxVol = clampVol(p.sfxVol);
+                if (p.mode === "online") p.mode = "solo";   // never boot into a dead room
+                return p;
+            } catch (e) { return null; }
         }
         function saveSettings() {
             try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); }
@@ -1850,9 +1872,11 @@
         let duoScore = { p1: 0, p2: 0 };
         function isDuo() { return settings.mode === "duo"; }
         const BEST_KEY = "minepong.best";
+        const LEGACY_BEST_KEY = "minePongBestStatsV1";   // records from the Android build
         let bestStats = (function () {
             try {
-                const raw = JSON.parse(localStorage.getItem(BEST_KEY)) || {};
+                const raw = JSON.parse(localStorage.getItem(BEST_KEY) ||
+                                       localStorage.getItem(LEGACY_BEST_KEY)) || {};
                 return {
                     wins: Number(raw.wins) > 0 ? Number(raw.wins) : 0,
                     hits: Number(raw.hits) > 0 ? Number(raw.hits) : 0
