@@ -1699,6 +1699,15 @@
             }
             if (shakeFrames > 0) shakeFrames--;
         }
+        // The only animated decor that carries state between frames; like the
+        // particles above it is stepped by the fixed clock, not by the display.
+        function stepDecor() {
+            if (!rainCols) return;
+            for (const col of rainCols) {
+                col.y += col.speed;
+                if (col.y > FIELD_H + col.len * 16) col.y = -20;
+            }
+        }
         function drawFx() {
             const glow = settings.theme === "cyber";
             for (const p of particles) {
@@ -2367,8 +2376,6 @@
                     ctx.font = "14px Courier New";
                     ctx.textAlign = "center";
                     for (const col of getRain()) {
-                        col.y += col.speed;
-                        if (col.y > FIELD_H + col.len * 16) col.y = -20;
                         for (let i = 0; i < col.len; i++) {
                             const y = col.y - i * 16;
                             if (y < -16 || y > FIELD_H + 16) continue;
@@ -3018,8 +3025,19 @@
         });
 
         // ------- Main loop -------
-        function draw() {
-            frame++;
+        // Every speed in this file is written in pixels per step, and the loop
+        // used to run one step per drawn frame. That is correct only on a 60 Hz
+        // display: on a 120 Hz phone or a 144 Hz monitor the whole game ran two
+        // to three times too fast. The simulation now advances on a fixed 60 Hz
+        // clock while drawing still happens once per frame, so a fast display
+        // buys smoother motion instead of a faster game.
+        const STEP_MS = 1000 / 60;
+        const MAX_CATCHUP = 5;   // after a stall, drop the missed time rather
+                                 // than teleport the ball through a paddle
+        let stepAcc = 0, lastFrameAt = 0;
+
+        function draw(now) {
+            if (now === undefined) now = performance.now();   // the very first call
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.imageSmoothingEnabled = false;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -3040,11 +3058,21 @@
             drawPaddle(ai, false);
             drawBall();
             drawFx();
-            updateFx();
             drawVignette();
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             if (gameState === "PAUSED") drawPauseOverlay();
-            update();
+
+            const elapsed = lastFrameAt ? now - lastFrameAt : STEP_MS;
+            lastFrameAt = now;
+            // clamped, so a hidden tab or a hiccup cannot queue up a hundred steps
+            stepAcc = Math.min(stepAcc + Math.max(0, elapsed), STEP_MS * MAX_CATCHUP);
+            while (stepAcc >= STEP_MS) {
+                stepAcc -= STEP_MS;
+                frame++;          // drives the animated themes
+                stepDecor();
+                updateFx();
+                update();
+            }
             requestAnimationFrame(draw);
         }
 

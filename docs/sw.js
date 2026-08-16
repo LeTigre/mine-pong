@@ -1,7 +1,7 @@
 /* Mine Pong offline cache.
    Bump CACHE when you publish a new build, otherwise phones that already
    installed the game keep serving the old one from disk. */
-const CACHE = "minepong-v2.9.0";
+const CACHE = "minepong-v2.9.1";
 const ASSETS = [
     "./",
     "./index.html",
